@@ -1,49 +1,78 @@
 import glob
 import sqlite3
 import re
-class logSystemRecord:
+import ConfigParser
+from datetime import datetime as dt
+from datetime import date
+
+class Database:
+    def __init__(self):
+        self.connection = sqlite3.connect('../log.db')
+        self.cursor = self.connection.cursor()
+    def insert(self,log):
+        query="INSERT OR IGNORE INTO log (systemId,timeStamp,type,typeError,line,message,path,lineNumber) VALUES(?,?,?,?,?,?,?,?)"
+        self.cursor.execute(query,log.printLog())
+        self.connection.commit()
+class logRecord:
     def __init__(self):
         self.type=''
+        self.system=''
+        self.typeError=''
         self.line=''
-        self.timestamp=''
+        self.timeStamp=''
         self.parse=[]
         self.path=''
-        self.line=''
         self.lineNumber=''
-
-    def insert(self):
-        pass
+        self.message=''
+        self.year='1900'
+        self.month='12'
+        self.day='31'
+        self.hour='24'
+        self.minute='59'
+        self.second='59'
+    def setSystem(self,system):
+        self.system=system
+    def printLog(self):
+        return [self.system,self.timeStamp,self.type,self.typeError,self.line,self.message,self.path,self.lineNumber]
     def setPath(self):
         path = re.search('in (/.*?\s)', self.parse[-1])
-        self.path=path.group(0) if path else ''
+        self.path=path.group(1) if path else ''
     def setlineNumber(self):
         lineNumber= re.search('line (.*)(?<=\D)(\d+)', self.parse[-1])
         self.lineNumber=lineNumber.group(2) if lineNumber else ''
-    def setTimestamp(self,timestamp):
-        self.timestamp=timestamp
+    def setTimestamp(self,timeStamp):
+        self.year,self.month,self.day,
+        self.timeStamp=timeStamp
     def setLine(self,line):
         self.line=line
     def setParse(self,parse):
         self.parse=parse
+
+    def isLog(self):
+        self.type=self.parse[0]
+        if len(self.parse)>0:
+            self.typeError=self.parse[1]
+            self.message=":".join(self.parse[1:])
+          
         
-    def isNotice(self):
-        if len(self.parse)==7:
-            print  self.parse
+    def isDebug(self):
+        self.type=self.parse[0]
+        self.message=":".join(self.parse[1:])
         
 class cleanlog():
-    def __init__(self):
-        self.filesPath='/Users/carlos/Downloads/tmp/'
+    def __init__(self,path,daysToProccess):
+        self.filesPath=path
         self.typeOfLogs=['system','exception']
         self.blankpatterns=re.compile(r'^\s|^\(|^\)|^}|^{')
-        pass
+        self.database=Database()
+        self.daysToProccess=daysToProccess
     def analysisSystem(self,fileName):
         index=0
-        notice={}
         multiline=[]
-        multilineString=''
         currentLine=''
-        for line in open(fileName).xreadlines():
+        for line in reversed(open(fileName)).readlines():
             index+=1
+#             print index
             previusLine=currentLine           
             currentLine=line
                         
@@ -52,66 +81,50 @@ class cleanlog():
                 continue
             else:
                 if len(multiline)>1:
-                    print "***********" +str(index)
-                    multilineString=''
-                    for line in multiline:
-                        multilineString+=line
-                    print multilineString
-                multiline=[]
-                
-#             print index           
-            if previusLine=="":
+                    multilineString=self.getMultiline(multiline)
+                    previusLine=multilineString
+                multiline=[]        
+            if len(previusLine)<=2:
                 continue
-            log=logSystemRecord()
+            log=logRecord()
+            log.setSystem("1")
             log.setTimestamp(previusLine[:26].strip())
+            print log.setTimestamp
             parse= previusLine[26:].split(":")
             log.setLine(previusLine)
             log.setParse(parse)
             log.setPath()
             log.setlineNumber()
-            if "Notice:" in previusLine:
-                log.isNotice()
-                continue
-            if "Warning:" in previusLine:
-                continue
-            if "Recoverable Error:" in previusLine:
-                continue
-            if "failed to open stream:" in previusLine:
-                continue
-            if "include():" in previusLine:
-                continue
-            
-            if len(parse)==2:
-                continue
-            if len(parse)==0:
-                continue            
-            if len(parse)==1:
-                continue
-            if len(parse)!=3:
-                
-                print index
-                print len(parse)
-                print previusLine
-                for part in parse:
-                    print part.strip()
-                return
-            
+            if "DEBUG" in previusLine:
+                log.isDebug()
+            else:
+                log.isLog()
+            self.database.insert(log) 
         print index
-        for key in notice:
-            print key
-            print "count "+ str(len(notice[key]))
             
     def analysisException(self,fileName):
         pass
+    def getMultiline(self,multiline):
+        multilineString=''
+        for line in multiline:
+            multilineString+=line
+        return multilineString    
     def run(self):
 #         for typeOfLog in self.typeOfLogs:
 #             print typeOfLog
 #             for fileName in glob.glob(self.filesPath+typeOfLog+'*.*'):
 #                 print fileName
-        fileName='/Users/carlos/Downloads/tmp/system.log.web03'
+        fileName='/Users/carlos/Downloads/tmp/system.log'
         self.analysisSystem(fileName)
 if __name__ == "__main__":
-    cleaner = cleanlog()
+    config = ConfigParser.ConfigParser()
+    config.read("config.ini")
+    path = config.get('config', "path")
+    daysToProccess = config.get('config', "daysToProccess")
+    today = date.today()
+    print today
+       
+    cleaner = cleanlog(path,daysToProccess)
     cleaner.run()
             
             
