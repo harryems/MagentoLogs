@@ -3,53 +3,9 @@ import sqlite3
 import re
 import ConfigParser
 from datetime import datetime as dt
-from datetime import date, timedelta
-import string
-import ast
+from datetime import timedelta
 import time
-
-
-
-class BackwardsReader:
-    """Read a file line by line, backwards"""
-    BLKSIZE = 4096
-
-    def readline(self):
-        BLKSIZE = 4096
-        buf = ""
-        self.file.seek(-1, 2)
-        lastchar = self.file.read(1)
-        trailing_newline = (lastchar == "\n")        
-        while 1:
-            newline_pos = buf.rfind("\n")
-            pos = self.file.tell()
-            if newline_pos != -1:
-                # Found a newline
-                line = buf[newline_pos+1:]
-                buf = buf[:newline_pos]
-                if pos or newline_pos or trailing_newline:
-                    line += "\n"
-                yield line
-            elif pos:
-                # Need to fill buffer
-                toread = min(BLKSIZE, pos)
-                self.file.seek(pos-toread, 0)
-                buf = self.file.read(toread) + buf
-                self.file.seek(pos-toread, 0)
-                if pos == toread:
-                    buf = "\n" + buf
-            else:
-                # Start-of-file
-                return
-    def __init__(self, _file):
-        self.file = _file
-        self.buf = ""
-        self.file.seek(-1, 2)
-        self.trailing_newline = 0
-        lastchar = self.file.read(1)
-        if lastchar == "\n":
-            self.trailing_newline = 1
-            self.file.seek(-1, 2)
+import os
 
 class Database:
     def __init__(self):
@@ -74,12 +30,12 @@ class logRecord:
 #         self.month='12'
 #         self.day='31'
 #         self.hour='24'
-#         self.minute='59'
+#         self.minute='59' 
 #         self.second='59'
     def setSystem(self,system):
         self.system=system
     def printLog(self):
-        return [self.system,self.timeStamp,self.type,self.typeError,self.line,self.message,self.path,self.lineNumber]
+        return [unicode(self.system, 'utf-8'),unicode(self.timeStamp, 'utf-8'),unicode(self.type, 'utf-8'),unicode(self.typeError, 'utf-8'),unicode(self.line, 'utf-8'),unicode(self.message, 'utf-8'),unicode(self.path, 'utf-8'),unicode(self.lineNumber, 'utf-8')]
     def setPath(self,path):
 #         path = re.search('in (/.*?\s)', self.parse[-1])
 #         self.path=path.group(1) if path else ''
@@ -95,6 +51,12 @@ class logRecord:
 #             self.year,self.month,self.day,self.hour,self.minute,self.second=list(match.groups())
         self.timeStamp=timeStamp
 #         print self.timeStamp
+    def setTypeError(self,typeError):
+        self.typeError=typeError
+    def setType(self,_type):
+        self.type=_type
+    def setMessage(self,message):
+        self.message=message
     def getTimestamp(self):
         return self.timeStamp
     def setLine(self,line):
@@ -107,7 +69,6 @@ class logRecord:
         if len(self.parse)>0:
             self.typeError=self.parse[1]
             self.message=":".join(self.parse[1:])
-          
         
     def isDebug(self):
         self.type=self.parse[0]
@@ -120,14 +81,9 @@ class cleanlog():
         self.blankpatterns=re.compile(r'^\s|^\(|^\)|^}|^{')
         self.database=Database()
         self.daysToProccess=daysToProccess
-#         self.backwardsReader=backwardsReader
     def analysisException(self,fileName):
         multiline=[]
-        currentLine=''
-        index=0
-        start = time.time()
-        print start
-        
+        index=0        
         toDate=dt.today()- timedelta(days=int(self.daysToProccess))
         limitDate=True        
         for line in open(fileName).readlines():
@@ -135,73 +91,58 @@ class cleanlog():
             print index
             if re.match("^#|^Trace|^Stack|^$", line):
                 continue
-# #             if (limitDate):
             try:
                 _date=dt.strptime(line[:10].strip(), "%Y-%m-%d")
+            
             except:
                 _date=False
-#                 continue
-#                     continue
-#                 if _date>=toDate:
-#                     limitDate=False
-#                     end = time.time()
-#                     print end
-#                     print end-start
-#                     print index
-#                 else:
-#                     continue
-            previusLine=currentLine           
-            currentLine=line
+            print _date
+            if limitDate:
+                if _date:
+                    if _date>=toDate:
+                        limitDate=False
+                    else:
+                        continue
                         
-            if not _date:
-                multiline.append(previusLine)
-                continue
-            else:
-                if len(multiline)>1:
+            if _date:
+                if len(multiline)>=1:
                     multilineString=self.getMultiline(multiline)
-                    previusLine=multilineString
-                else:
-                    continue
-                multiline=[]        
-            log=logRecord()
-            log.setSystem("2")
-            log.setTimestamp(previusLine[:10].strip())
-            parse=re.match(r'^(.+?)\:(.|\n)*?\'(.+?)\'.*\'(.+?)\'.*in(.*)\:(.*)', previusLine[10:])
-            print previusLine
-            print list(parse.groups())
-#             if parse is None:
-#             parse=re.search(r'^(.+?)\:\w*(.+?)\:(.*)$', previusLine[10:])
-#             print previusLine[10:]
-            if parse is not None:
-                print list(parse.groups())
-                break
-            if "DEBUG" not in previusLine:
-                print previusLine.strip()
-#             parse= previusLine[26:].split(":")
-#             log.setLine(previusLine)
-#             log.setParse(parse)
-#             log.setPath()
-#             log.setlineNumber()
-#             if "DEBUG" in previusLine:
-#                 log.isDebug()
-#             else:
-#                 log.isLog()
-#             self.database.insert(log)
-#         print time.time()-start
+                    if re.match(r'^(.+?)\:(.|\n)*?\'(.+?)\'.*\'(.+?)\'.*in(.*)\:(.*)', multilineString[26:].strip()):
+                        _match=re.match(r'^(.+?)\:(.|\n)*?\'(.+?)\'.*\'(.+?)\'.*in(.*)\:(.*)', multilineString[26:].strip())
+                    elif re.match(r'^(.+?)\:()()()()()', multilineString[26:].strip()):
+                        _match=re.match(r'^(.+?)\:()()()()()', multilineString[26:].strip()) 
+                    parse=list(_match.groups())   
+                    log=logRecord()
+                    log.setSystem("2")
+#                     print multilineString
+                    log.setTimestamp(multilineString[:10].strip())
+                    log.setType(parse[0])
+                    log.setTypeError(parse[2])
+                    log.setMessage(multilineString[26:].split(":",1)[-1])
+                    log.setPath(parse[4])
+                    log.setlineNumber(parse[5])
+                    log.setLine(multilineString)
+                    self.database.insert(log)
 
+                    multiline=[]
+                    multiline.append(line)
+                else:
+                    multiline.append(line) 
+                    
+            else:
+                multiline.append(line)
+                
 
     def analysisSystem(self,fileName):
         multiline=[]
         currentLine=''
         index=0
-        start = time.time()
-        print start
         
         toDate=dt.today()- timedelta(days=int(self.daysToProccess))
         limitDate=True        
         for line in open(fileName).readlines():
             index+=1
-#             print index
+            print index
             if (limitDate):
                 try:
                     _date=dt.strptime(line[:10].strip(), "%Y-%m-%d")
@@ -209,10 +150,6 @@ class cleanlog():
                     continue
                 if _date>=toDate:
                     limitDate=False
-                    end = time.time()
-                    print end
-                    print end-start
-                    print index
                 else:
                     continue
             previusLine=currentLine           
@@ -232,29 +169,31 @@ class cleanlog():
             log.setSystem("1")
             log.setTimestamp(previusLine[:10].strip())
             parse= previusLine[26:].split(":")
+            path = re.search('in (/.*?\s)', parse[-1])
+            _path=path.group(1) if path else ''
+            lineNumber= re.search('line (.*)(?<=\D)(\d+)', parse[-1])
+            _lineNumber=lineNumber.group(2) if lineNumber else ''            
             log.setLine(previusLine)
             log.setParse(parse)
-            log.setPath()
-            log.setlineNumber()
+            log.setPath(_path)
+            log.setlineNumber(_lineNumber)
             if "DEBUG" in previusLine:
                 log.isDebug()
             else:
                 log.isLog()
             self.database.insert(log)
-        print time.time()-start        
     def getMultiline(self,multiline):
         multilineString=''
         for line in multiline:
             multilineString+=line
         return multilineString    
     def run(self):
-#         for typeOfLog in self.typeOfLogs:
-#             print typeOfLog
-#             for fileName in glob.glob(self.filesPath+typeOfLog+'*.*'):
-#                 print fileName
-        fileName='/Users/carlos/Downloads/tmp/exception.log'
-        self.analysisException(fileName)
-#         self.analysisSystem(fileName)
+        for fileName in glob.glob(self.filesPath+'*.*'):
+            print fileName
+            if os.path.basename(fileName).startswith('exception'):
+                self.analysisException(fileName)
+            if os.path.basename(fileName).startswith('system'):
+                self.analysisSystem(fileName)                
 if __name__ == "__main__":
     config = ConfigParser.ConfigParser()
     config.read("config.ini")
